@@ -101,7 +101,7 @@ menores que a largura de extrusão do bico · sugestão de orientação · neces
 |---|---|
 | F0 ✅ | Estrutura do repo (`backend/` FastAPI, `frontend/`), venv, `ruff` + `pytest`, `.env.example` |
 | F1 ✅ | Catálogo de presets: leitura dos presets oficiais A1/A1M + resolução de herança |
-| F2 | Análise geométrica (`trimesh`): métricas, malha, overhangs, encaixe na mesa, orientação sugerida, escala sob demanda |
+| F2 ✅ | Análise geométrica (`trimesh`): métricas, malha, overhangs, encaixe na mesa, orientação sugerida, escala sob demanda |
 | F3 | Frontend: upload, visualizador Three.js com heatmap de overhang, questionário (uso, filamento, bico, impressora, AMS), i18n PT/EN |
 | F4 | Motor de recomendação por regras (filamento + parâmetros, prioridade qualidade) + explicação via Claude |
 | F5 | Saídas: preset de usuário (JSON/bundle) + 3MF de projeto via CLI + fatiamento para tempo/filamento reais |
@@ -117,6 +117,7 @@ menores que a largura de extrusão do bico · sugestão de orientação · neces
 ```
 
 - `backend/filamentor/catalog.py` — `PresetLibrary` (carrega e achata presets) e `Catalog` (escopo do Filamentor).
+- `backend/filamentor/analysis.py` — análise geométrica (`analyze()`), exposta em `POST /api/analyze` (upload).
 - `backend/filamentor/main.py` — API (`/api/health`, `/api/printers`, `/api/materials`, `/api/processes`,
   `/api/filaments`, `/api/presets/resolved`) e serve `frontend/` em `/`.
 - Testes em `backend/tests/`: `test_catalog.py` usa presets sintéticos; `test_bambu_studio_profiles.py`
@@ -130,6 +131,22 @@ menores que a largura de extrusão do bico · sugestão de orientação · neces
 - Filtros do catálogo: `instantiation == "true"`, `compatible_printers` contém a máquina, família suportada,
   `filament_is_support != 1`, `required_nozzle_HRC <= 20` (exclui CF/GF).
 - Catálogo atual: A1 e A1 mini × bicos 0.2/0.4/0.6/0.8; ex. A1 0.4 = 10 processos e 37 filamentos.
+
+## Análise geométrica — decisões e limitações (F2)
+
+- **Overhang** segue a convenção do Bambu Studio (`support_threshold_angle`): inclinação da face voltada para
+  baixo em relação à horizontal; reportamos 30°/45°/60°. Faces até 0,2 mm da mesa não contam.
+- **Espessura de parede** por ray casting (20 mil amostras ponderadas por área) comparada à largura de linha
+  de cada bico (1,05 × diâmetro). **Exige `embreex`**: com o ray casting padrão (rtree) uma malha de 2 M de
+  faces passou de 10 min; com Embree leva 0,8 s.
+- **Orientação**: candidatas = original + até 8 poses estáveis (`trimesh.poses.compute_stable_poses`).
+  Pontuação "qualidade primeiro": −3 × overhang + 1 × contato relativo − 0,2 × altura relativa.
+- **Fragmentos** (corpo com extensão ≤ 0,5 mm e volume ≤ 0,1 mm³) são descartados — Meshy deixou um assim.
+- Malha aberta: volume vira estimativa pelo casco convexo (`volume_is_estimate`).
+- Limitações conhecidas: não detecta pontes; **faces internas** (peças sobrepostas sem união booleana)
+  geram falso overhang; aviso de unidade só por faixa de tamanho (< 5 mm ou > 1 m).
+- Caso de referência: `Meshy_AI_Master Mason with Gavel` (STL 95 MB, ~2 M faces, 26×26×50 mm) → 7 s no total,
+  malha fechada após remover 1 fragmento, 9% de overhang a 45°, base plana de 538 mm², melhor orientação = original.
 
 ## Regras
 

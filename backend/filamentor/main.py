@@ -1,11 +1,14 @@
 from dataclasses import asdict
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, UploadFile
 from fastapi.staticfiles import StaticFiles
 
 from . import __doc__ as tagline
+from .analysis import AnalysisError, analyze
 from .catalog import SUPPORTED_MATERIALS, CatalogError, get_catalog
+
+MAX_UPLOAD_BYTES = 250 * 1024 * 1024
 
 FRONTEND_DIR = Path(__file__).resolve().parents[2] / "frontend"
 
@@ -66,6 +69,19 @@ def resolved_preset(name: str = Query(..., description="Nome exato do preset")):
         return _catalog().library.resolve(name)
     except CatalogError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/api/analyze")
+def analyze_model(file: UploadFile):
+    """Análise geométrica. Síncrono de propósito: o FastAPI roda em threadpool e o
+    trabalho é CPU-bound (numpy/embree)."""
+    data = file.file.read(MAX_UPLOAD_BYTES + 1)
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Arquivo maior que 250 MB")
+    try:
+        return asdict(analyze(data, file.filename or "", _catalog().printers()))
+    except AnalysisError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 # Montado por último para não encobrir as rotas /api.
