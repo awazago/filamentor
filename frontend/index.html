@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Filamentor</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo" aria-hidden="true">◎</span>
+      <div>
+        <h1>Filamentor</h1>
+        <p class="tagline" data-i18n="tagline"></p>
+      </div>
+    </div>
+    <div class="lang" role="group" aria-label="Idioma / Language">
+      <button type="button" data-lang="pt-BR">PT</button>
+      <button type="button" data-lang="en">EN</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="card">
+      <h2 data-i18n="catalogTitle"></h2>
+      <p class="muted" data-i18n="catalogIntro"></p>
+
+      <div class="controls">
+        <label>
+          <span data-i18n="printer"></span>
+          <select id="printer"></select>
+        </label>
+        <label>
+          <span data-i18n="nozzle"></span>
+          <select id="nozzle"></select>
+        </label>
+        <label>
+          <span data-i18n="material"></span>
+          <select id="material"></select>
+        </label>
+      </div>
+
+      <p id="status" class="status" role="status"></p>
+
+      <div class="grid">
+        <div>
+          <h3 data-i18n="processes"></h3>
+          <ul id="processes" class="list"></ul>
+        </div>
+        <div>
+          <h3 data-i18n="filaments"></h3>
+          <table class="table">
+            <thead>
+              <tr>
+                <th data-i18n="preset"></th>
+                <th data-i18n="temperature"></th>
+                <th data-i18n="flow"></th>
+              </tr>
+            </thead>
+            <tbody id="filaments"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

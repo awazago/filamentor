@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "filamentor",
+      "runtimeExecutable": ".venv/bin/uvicorn",
+      "runtimeArgs": ["filamentor.main:app", "--reload", "--reload-dir", "backend", "--port", "8000"],
+      "port": 8000
+    }
+  ]
+}

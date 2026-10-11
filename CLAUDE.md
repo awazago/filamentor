@@ -1,8 +1,8 @@
-# Bambu Print Advisor — Instruções para Agentes Claude
+# Filamentor — Instruções para Agentes Claude
 
 > Documento de handoff criado em 2026-10-11 a partir da sessão de levantamento de requisitos
 > (originalmente aberta no repositório do FisioApp — **sem relação** com este projeto).
-> Nome do projeto é provisório.
+> Nome comercial definido em 2026-10-11: **Filamentor** (slogan provisório: "sua peça pronta para imprimir" / "your model, print-ready"). Não usar a marca "Bambu" no nome do produto.
 
 ## O que é
 
@@ -35,7 +35,7 @@ Objetivo de produto: começar como ferramenta de uso pessoal; se funcionar bem, 
 | 11 | Parâmetros | Sugerir altura de camada, infill (padrão + %), paredes, topo/fundo, tipo de suporte (tree/normal), brim, velocidades, temperaturas, resfriamento. Estimar tempo e filamento. |
 | 12 | Idioma | PT-BR e EN. |
 
-## Recomendação de arquitetura (a confirmar com o usuário no início da nova sessão)
+## Arquitetura (confirmada pelo usuário em 2026-10-11)
 
 Como a chave da API Claude **não pode ficar no navegador**, um backend é necessário de qualquer forma.
 Proposta:
@@ -48,18 +48,37 @@ Proposta:
 - Arquivos do usuário processados em memória, sem persistência no MVP (privacidade).
 - Deploy futuro: Railway (usuário já usa) ou similar.
 
-## Fatos técnicos relevantes (verificar contra a versão atual do Bambu Studio)
+## Fatos técnicos validados (Bambu Studio 02.08.02.61 instalado localmente, 2026-10-11)
 
 - **Volume de impressão:** A1 = 256 × 256 × 256 mm; A1 mini = 180 × 180 × 180 mm.
-- **Presets do Bambu Studio** são JSON com campos como `type` (`process` / `filament` / `machine`),
-  `name`, `inherits` (ex.: `"0.20mm Standard @BBL A1"`), `from: "User"` e só as chaves sobrescritas.
-  Existem também bundles de preset exportáveis/importáveis (`.bbscfg`, `.bbsflmt`) — confirmar formato.
-- **3MF da Bambu** é um ZIP contendo, entre outros: `3D/3dmodel.model` (geometria),
-  `Metadata/project_settings.config` (JSON com as configurações do projeto),
-  `Metadata/model_settings.config` (XML com overrides por objeto/placa), `Metadata/slice_info.config`.
-  A saída (B) deve ser gerada de forma que o Bambu Studio abra sem aviso de incompatibilidade.
-- **Estimativa de filamento/tempo** sem fatiar é aproximada (volume, infill, paredes). Deixar isso claro na UI.
-  Fatiamento real via CLI do Bambu Studio/OrcaSlicer é uma evolução pós-MVP (opção C, `.gcode.3mf`).
+- **Presets oficiais** ficam em `/Applications/BambuStudio.app/Contents/Resources/profiles/BBL/`
+  (`machine/`, `process/`, `filament/`). Nomes: máquina `Bambu Lab A1 0.4 nozzle`, `Bambu Lab A1 mini 0.6 nozzle`…;
+  processo `0.20mm Standard @BBL A1` / `@BBL A1M` (+ variantes `0.2/0.6/0.8 nozzle`); filamento
+  `Bambu PETG HF @BBL A1`, `Bambu PLA Matte @BBL A1M 0.2 nozzle`… (161 presets PLA/PETG/TPU para A1/A1M).
+  Usar como **catálogo-fonte**; não copiar para o repo (fazem parte do Bambu Studio, AGPL) — ler em runtime / na imagem Docker.
+- **Presets são cadeias de herança** (`inherits`): ex. `0.20mm Standard @BBL A1` → `fdm_process_single_0.20` → … ;
+  `Bambu PETG HF @BBL A1` → `Bambu PETG HF @base` → …. Valores efetivos exigem resolver a cadeia.
+- **Preset de usuário** (formato que o Bambu Studio grava em
+  `~/Library/Application Support/BambuStudio/user/<id>/process/`): JSON com `name`, `inherits` (preset do sistema),
+  `from: "User"`, `print_settings_id`, `version` e **só as chaves alteradas** + arquivo `.info` ao lado.
+  O usuário já tem presets próprios lá (ex.: "Action Figure PETG | C0,20 · 8% · 3P | Suporte Tree") — boa referência
+  de estilo de nomes e de ajustes que ele valoriza.
+- **Formatos importáveis** pelo Bambu Studio: `*.json`, `*.zip`, `*.bbscfg` (bundle de impressora) e `*.bbsflmt`
+  (bundle de filamento), com `bundle_structure.json` interno. Estrutura do bundle ainda a detalhar.
+- **CLI do Bambu Studio funciona (testado):**
+  `BambuStudio --load-settings "machine.json;process.json" --load-filaments "fil.json" [--orient 1] [--arrange 1] --export-3mf /abs/out.3mf model.stl`
+  - Gera **3MF de projeto completo** (`Metadata/project_settings.config`, `model_settings.config`, miniaturas
+    das placas etc.) com printer/process/filament embutidos → **saída (B) resolvida pelo próprio Bambu Studio**.
+  - Preset customizado com `inherits` + overrides (ex. `wall_loops`, `sparse_infill_density`, `brim_type`) foi aplicado corretamente.
+  - `--slice 0` fatia em < 1 s para peças simples e grava em `slice_info.config` o **tempo previsto** e o
+    **filamento usado (m / g)** → estimativa real, não aproximada.
+  - ⚠️ **Caminhos de saída devem ser absolutos** (relativo falha com "Unable to open the file").
+  - ⚠️ O CLI grava um `result.json` (status, `return_code`, tempos) no diretório de trabalho → rodar sempre
+    com `cwd` numa pasta temporária por requisição e ler esse arquivo para diagnosticar falhas.
+  - ⚠️ O preset de filamento do sistema passado direto **não teve a herança resolvida** (tipo saiu "PLA", peso 0 g):
+    **sempre passar configs de filamento já "achatadas"** (cadeia de `inherits` resolvida pelo nosso backend).
+- **Deploy (risco):** em produção o backend precisará do Bambu Studio CLI em Linux (AppImage/Docker) ou do OrcaSlicer.
+  Validar empacotamento antes da fase SaaS. Rever licença (AGPL) ao abrir ao público.
 - A máquina local tem MCPs `bambu-printer` / `bambu-studio-tools` disponíveis, úteis para **validar**
   os arquivos gerados (ex.: `inspect_3mf`, `slice_model`) durante o desenvolvimento.
 
@@ -72,9 +91,45 @@ menores que a largura de extrusão do bico · sugestão de orientação · neces
 
 ## Próximos passos
 
-1. Confirmar com o usuário a arquitetura (backend Python + frontend JS) e o nome do projeto.
-2. Pesquisar e validar o formato exato de presets/bundles e do 3MF atual do Bambu Studio.
-3. Montar plano de MVP em fases e só então implementar.
+1. ~~Definir o nome comercial~~ → **Filamentor**.
+2. ~~Validar formato de presets e 3MF~~ → feito (ver acima).
+3. Plano de MVP em fases: ver seção "Plano do MVP".
+
+## Plano do MVP
+
+| Fase | Entrega |
+|---|---|
+| F0 ✅ | Estrutura do repo (`backend/` FastAPI, `frontend/`), venv, `ruff` + `pytest`, `.env.example` |
+| F1 ✅ | Catálogo de presets: leitura dos presets oficiais A1/A1M + resolução de herança |
+| F2 | Análise geométrica (`trimesh`): métricas, malha, overhangs, encaixe na mesa, orientação sugerida, escala sob demanda |
+| F3 | Frontend: upload, visualizador Three.js com heatmap de overhang, questionário (uso, filamento, bico, impressora, AMS), i18n PT/EN |
+| F4 | Motor de recomendação por regras (filamento + parâmetros, prioridade qualidade) + explicação via Claude |
+| F5 | Saídas: preset de usuário (JSON/bundle) + 3MF de projeto via CLI + fatiamento para tempo/filamento reais |
+| F6 | Multicor/AMS Lite (até 4 slots) e validação com impressões reais |
+
+## Desenvolvimento
+
+```bash
+/opt/homebrew/bin/python3.12 -m venv .venv && .venv/bin/pip install -e ".[dev]"
+.venv/bin/uvicorn filamentor.main:app --reload --reload-dir backend --port 8000   # http://localhost:8000
+.venv/bin/ruff check . && .venv/bin/ruff format --check .                          # lint (rodar antes de commitar)
+.venv/bin/pytest -q
+```
+
+- `backend/filamentor/catalog.py` — `PresetLibrary` (carrega e achata presets) e `Catalog` (escopo do Filamentor).
+- `backend/filamentor/main.py` — API (`/api/health`, `/api/printers`, `/api/materials`, `/api/processes`,
+  `/api/filaments`, `/api/presets/resolved`) e serve `frontend/` em `/`.
+- Testes em `backend/tests/`: `test_catalog.py` usa presets sintéticos; `test_bambu_studio_profiles.py`
+  roda contra o Bambu Studio instalado (pulado se ausente).
+
+## Conhecimento de domínio descoberto
+
+- **Não existe preset de TPU para bico 0.2** (A1 e A1 mini) — o motor de recomendação não deve sugerir TPU com 0.2.
+- `filament_type` tem variantes: `TPU-AMS` (TPU rígido que passa pelo AMS Lite) e `PLA-AERO` (PLA espumante) —
+  agrupados nas famílias TPU e PLA (`MATERIAL_FAMILIES`). TPU comum **não** deve ir pelo AMS Lite.
+- Filtros do catálogo: `instantiation == "true"`, `compatible_printers` contém a máquina, família suportada,
+  `filament_is_support != 1`, `required_nozzle_HRC <= 20` (exclui CF/GF).
+- Catálogo atual: A1 e A1 mini × bicos 0.2/0.4/0.6/0.8; ex. A1 0.4 = 10 processos e 37 filamentos.
 
 ## Regras
 

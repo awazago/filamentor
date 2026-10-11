@@ -3,3 +3,7 @@
 __pycache__/
 node_modules/
 .DS_Store
+result.json
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
