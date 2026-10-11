@@ -14,6 +14,7 @@ import numpy as np
 import trimesh
 
 from .catalog import Printer
+from .threemf import Plate, ThreeMFError, read_3mf
 
 OVERHANG_THRESHOLDS = (30, 45, 60)
 DEFAULT_OVERHANG_THRESHOLD = 45
@@ -81,8 +82,19 @@ class ThinWalls:
 
 
 @dataclass
+class PlateInfo:
+    index: int
+    name: str
+    objects: list[str]
+    triangles: int
+
+
+@dataclass
 class Analysis:
     filename: str
+    # Projetos 3MF com várias placas: a análise vale para a placa `plate`.
+    plates: list[PlateInfo]
+    plate: int | None
     triangles: int
     dimensions_mm: list[float]
     volume_mm3: float
@@ -99,17 +111,63 @@ class Analysis:
     warnings: list[str] = field(default_factory=list)
 
 
-def load_mesh(data: bytes, filename: str) -> trimesh.Trimesh:
+@dataclass
+class LoadedModel:
+    mesh: trimesh.Trimesh
+    plates: list[PlateInfo]
+    plate: int | None
+    objects: int
+
+
+def _plate_info(plate: Plate) -> PlateInfo:
+    return PlateInfo(
+        index=plate.index,
+        name=plate.name,
+        objects=[o.name for o in plate.objects],
+        triangles=sum(len(o.mesh.faces) for o in plate.objects),
+    )
+
+
+def load_model(data: bytes, filename: str, plate: int | None = None) -> LoadedModel:
     suffix = PurePath(filename).suffix.lower().lstrip(".")
-    if suffix not in ("stl", "3mf"):
+    if suffix == "3mf":
+        try:
+            plates = read_3mf(data)
+        except ThreeMFError as exc:
+            raise AnalysisError(str(exc)) from exc
+        except Exception as exc:
+            raise AnalysisError(f"Não foi possível ler o 3MF: {exc}") from exc
+        selected = next((p for p in plates if p.index == plate), None) if plate else plates[0]
+        if selected is None:
+            raise AnalysisError(f"Placa {plate} não existe neste projeto")
+        return LoadedModel(
+            mesh=selected.mesh(),
+            plates=[_plate_info(p) for p in plates],
+            plate=selected.index,
+            objects=len(selected.objects),
+        )
+    if suffix != "stl":
         raise AnalysisError("Formato não suportado: envie um arquivo .stl ou .3mf")
     try:
-        loaded = trimesh.load(io.BytesIO(data), file_type=suffix, force="mesh")
+        mesh = trimesh.load(io.BytesIO(data), file_type="stl", force="mesh")
     except Exception as exc:
         raise AnalysisError(f"Não foi possível ler o arquivo: {exc}") from exc
-    if not isinstance(loaded, trimesh.Trimesh) or len(loaded.faces) == 0:
+    if not isinstance(mesh, trimesh.Trimesh) or len(mesh.faces) == 0:
         raise AnalysisError("O arquivo não contém nenhuma malha")
-    return loaded
+    return LoadedModel(mesh=mesh, plates=[], plate=None, objects=1)
+
+
+def load_mesh(data: bytes, filename: str, plate: int | None = None) -> trimesh.Trimesh:
+    return load_model(data, filename, plate).mesh
+
+
+def prepare_mesh(mesh: trimesh.Trimesh) -> tuple[trimesh.Trimesh, int, int]:
+    """Limpa fragmentos e apoia a peça na mesa (z mínimo = 0), centrada em XY.
+    Retorna (malha, corpos mantidos, fragmentos removidos)."""
+    mesh, bodies, fragments = remove_fragments(mesh)
+    low, high = mesh.bounds
+    mesh.apply_translation([-(low[0] + high[0]) / 2, -(low[1] + high[1]) / 2, -low[2]])
+    return mesh, bodies, fragments
 
 
 def remove_fragments(mesh: trimesh.Trimesh) -> tuple[trimesh.Trimesh, int, int]:
@@ -230,10 +288,11 @@ def printer_fit(dimensions: np.ndarray, printer: Printer) -> PrinterFit:
     )
 
 
-def analyze(data: bytes, filename: str, printers: list[Printer]) -> Analysis:
-    mesh = load_mesh(data, filename)
-    mesh, bodies, fragments = remove_fragments(mesh)
-    mesh.apply_translation([0, 0, -mesh.bounds[0][2]])
+def analyze(
+    data: bytes, filename: str, printers: list[Printer], plate: int | None = None
+) -> Analysis:
+    model = load_model(data, filename, plate)
+    mesh, bodies, fragments = prepare_mesh(model.mesh)
 
     warnings = []
     dimensions = mesh.extents
@@ -268,6 +327,8 @@ def analyze(data: bytes, filename: str, printers: list[Printer]) -> Analysis:
     unique_fits = {p.model: p for p in printers}
     return Analysis(
         filename=PurePath(filename).name,
+        plates=model.plates,
+        plate=model.plate,
         triangles=len(mesh.faces),
         dimensions_mm=np.round(dimensions, 2).tolist(),
         volume_mm3=round(float(abs(mesh.volume if watertight else mesh.convex_hull.volume)), 1),
@@ -287,6 +348,12 @@ def analyze(data: bytes, filename: str, printers: list[Printer]) -> Analysis:
         slenderness=round(slenderness, 2) if np.isfinite(slenderness) else None,
         thin_walls=wall_thickness(mesh),
         fits=[printer_fit(dimensions, p) for p in unique_fits.values()],
-        orientations=suggest_orientations(mesh),
+        # Placa com várias peças já vem arrumada pelo Bambu Studio: girar o conjunto não faz
+        # sentido, então só a orientação original é avaliada.
+        orientations=(
+            suggest_orientations(mesh)
+            if model.objects == 1
+            else [evaluate_orientation(mesh, np.eye(3), "original")]
+        ),
         warnings=warnings,
     )

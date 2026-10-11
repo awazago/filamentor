@@ -5,6 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Filamentor</title>
   <link rel="stylesheet" href="styles.css">
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
+      }
+    }
+  </script>
 </head>
 <body>
   <header class="topbar">
@@ -21,50 +29,148 @@
     </div>
   </header>
 
-  <main>
-    <section class="card">
-      <h2 data-i18n="catalogTitle"></h2>
-      <p class="muted" data-i18n="catalogIntro"></p>
-
-      <div class="controls">
-        <label>
-          <span data-i18n="printer"></span>
-          <select id="printer"></select>
+  <main class="layout">
+    <section class="stage">
+      <div id="viewer" class="viewer">
+        <label id="dropzone" class="dropzone">
+          <input id="file" type="file" accept=".stl,.3mf" hidden>
+          <span class="drop-icon" aria-hidden="true">⬆</span>
+          <strong data-i18n="dropTitle"></strong>
+          <span class="muted" data-i18n="dropHint"></span>
         </label>
-        <label>
-          <span data-i18n="nozzle"></span>
-          <select id="nozzle"></select>
-        </label>
-        <label>
-          <span data-i18n="material"></span>
-          <select id="material"></select>
-        </label>
+        <div id="viewer-status" class="viewer-status" hidden></div>
       </div>
 
-      <p id="status" class="status" role="status"></p>
-
-      <div class="grid">
-        <div>
-          <h3 data-i18n="processes"></h3>
-          <ul id="processes" class="list"></ul>
+      <div id="viewer-tools" class="viewer-tools" hidden>
+        <label class="slider">
+          <span><span data-i18n="overhangAngle"></span> <output id="threshold-value">45°</output></span>
+          <input id="threshold" type="range" min="20" max="70" step="5" value="45">
+        </label>
+        <div class="legend">
+          <span><i class="swatch base"></i><span data-i18n="legendOk"></span></span>
+          <span><i class="swatch warn"></i><span data-i18n="legendWarn"></span></span>
+          <span><i class="swatch bad"></i><span data-i18n="legendBad"></span></span>
         </div>
-        <div>
-          <h3 data-i18n="filaments"></h3>
-          <table class="table">
-            <thead>
-              <tr>
-                <th data-i18n="preset"></th>
-                <th data-i18n="temperature"></th>
-                <th data-i18n="flow"></th>
-              </tr>
-            </thead>
-            <tbody id="filaments"></tbody>
-          </table>
-        </div>
+        <button id="replace" type="button" class="ghost" data-i18n="replaceFile"></button>
       </div>
     </section>
+
+    <aside class="panel">
+      <section class="card" id="analysis-card">
+        <h2><span class="step">1</span><span data-i18n="stepAnalysis"></span></h2>
+        <p id="analysis-empty" class="muted" data-i18n="analysisEmpty"></p>
+        <div id="analysis" hidden>
+          <p id="filename" class="filename"></p>
+          <label class="field" id="plate-field" hidden>
+            <span data-i18n="plate"></span>
+            <select id="plate"></select>
+          </label>
+          <ul id="warnings" class="warnings"></ul>
+          <dl id="metrics" class="metrics"></dl>
+          <h3 data-i18n="orientations"></h3>
+          <ol id="orientations" class="orientations"></ol>
+          <h3 data-i18n="thinWalls"></h3>
+          <dl id="thin-walls" class="metrics compact"></dl>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2><span class="step">2</span><span data-i18n="stepPrinter"></span></h2>
+        <div class="fields">
+          <label><span data-i18n="printer"></span><select id="printer"></select></label>
+          <label><span data-i18n="nozzle"></span><select id="nozzle"></select></label>
+        </div>
+        <fieldset class="chips" data-question="ams">
+          <legend data-i18n="ams"></legend>
+          <label><input type="radio" name="ams" value="yes"><span data-i18n="yes"></span></label>
+          <label><input type="radio" name="ams" value="no" checked><span data-i18n="no"></span></label>
+        </fieldset>
+        <p id="printer-fit" class="note"></p>
+      </section>
+
+      <section class="card">
+        <h2><span class="step">3</span><span data-i18n="stepPart"></span></h2>
+
+        <fieldset class="chips">
+          <legend data-i18n="materialQuestion"></legend>
+          <label><input type="radio" name="material" value="" checked><span data-i18n="materialUnknown"></span></label>
+          <label><input type="radio" name="material" value="PLA"><span>PLA</span></label>
+          <label><input type="radio" name="material" value="PETG"><span>PETG</span></label>
+          <label><input type="radio" name="material" value="TPU"><span>TPU</span></label>
+        </fieldset>
+        <label class="field" id="filament-field" hidden>
+          <span data-i18n="filamentPreset"></span>
+          <select id="filament"></select>
+        </label>
+
+        <fieldset class="chips">
+          <legend data-i18n="purpose"></legend>
+          <label><input type="radio" name="purpose" value="decorative" checked><span data-i18n="purposeDecorative"></span></label>
+          <label><input type="radio" name="purpose" value="functional"><span data-i18n="purposeFunctional"></span></label>
+          <label><input type="radio" name="purpose" value="prototype"><span data-i18n="purposePrototype"></span></label>
+        </fieldset>
+
+        <fieldset class="chips">
+          <legend data-i18n="environment"></legend>
+          <label><input type="radio" name="environment" value="indoor" checked><span data-i18n="indoor"></span></label>
+          <label><input type="radio" name="environment" value="outdoor"><span data-i18n="outdoor"></span></label>
+        </fieldset>
+
+        <fieldset class="chips">
+          <legend data-i18n="heat"></legend>
+          <label><input type="radio" name="heat" value="none" checked><span data-i18n="heatNone"></span></label>
+          <label><input type="radio" name="heat" value="moderate"><span data-i18n="heatModerate"></span></label>
+          <label><input type="radio" name="heat" value="high"><span data-i18n="heatHigh"></span></label>
+        </fieldset>
+
+        <fieldset class="chips">
+          <legend data-i18n="flexibility"></legend>
+          <label><input type="radio" name="flexibility" value="rigid" checked><span data-i18n="rigid"></span></label>
+          <label><input type="radio" name="flexibility" value="flexible"><span data-i18n="flexible"></span></label>
+        </fieldset>
+
+        <fieldset class="chips">
+          <legend data-i18n="strength"></legend>
+          <label><input type="radio" name="strength" value="low" checked><span data-i18n="low"></span></label>
+          <label><input type="radio" name="strength" value="medium"><span data-i18n="medium"></span></label>
+          <label><input type="radio" name="strength" value="high"><span data-i18n="high"></span></label>
+        </fieldset>
+
+        <fieldset class="chips">
+          <legend data-i18n="food"></legend>
+          <label><input type="radio" name="food" value="no" checked><span data-i18n="no"></span></label>
+          <label><input type="radio" name="food" value="yes"><span data-i18n="yes"></span></label>
+        </fieldset>
+
+        <fieldset class="chips">
+          <legend data-i18n="finish"></legend>
+          <label><input type="radio" name="finish" value="standard" checked><span data-i18n="finishStandard"></span></label>
+          <label><input type="radio" name="finish" value="matte"><span data-i18n="finishMatte"></span></label>
+          <label><input type="radio" name="finish" value="glossy"><span data-i18n="finishGlossy"></span></label>
+          <label><input type="radio" name="finish" value="detail"><span data-i18n="finishDetail"></span></label>
+        </fieldset>
+        <p id="answer-notes" class="note"></p>
+      </section>
+
+      <section class="card">
+        <h2><span class="step">4</span><span data-i18n="stepScale"></span></h2>
+        <label class="toggle">
+          <input id="scale-enabled" type="checkbox">
+          <span data-i18n="scaleQuestion"></span>
+        </label>
+        <div id="scale-fields" class="fields" hidden>
+          <label><span data-i18n="scalePercent"></span><input id="scale-percent" type="number" min="1" max="1000" step="1" value="100"></label>
+          <label><span data-i18n="scaleHeight"></span><input id="scale-height" type="number" min="0.1" step="0.1"></label>
+        </div>
+        <dl id="scale-result" class="metrics"></dl>
+        <p class="note" data-i18n="estimateNote"></p>
+      </section>
+
+      <button id="recommend" class="primary" type="button" disabled data-i18n="recommend"></button>
+      <p class="muted center small" data-i18n="recommendSoon"></p>
+    </aside>
   </main>
 
-  <script src="app.js"></script>
+  <script type="module" src="app.js"></script>
 </body>
 </html>

@@ -102,7 +102,7 @@ menores que a largura de extrusão do bico · sugestão de orientação · neces
 | F0 ✅ | Estrutura do repo (`backend/` FastAPI, `frontend/`), venv, `ruff` + `pytest`, `.env.example` |
 | F1 ✅ | Catálogo de presets: leitura dos presets oficiais A1/A1M + resolução de herança |
 | F2 ✅ | Análise geométrica (`trimesh`): métricas, malha, overhangs, encaixe na mesa, orientação sugerida, escala sob demanda |
-| F3 | Frontend: upload, visualizador Three.js com heatmap de overhang, questionário (uso, filamento, bico, impressora, AMS), i18n PT/EN |
+| F3 ✅ | Frontend: upload, visualizador Three.js com heatmap de overhang, questionário (uso, filamento, bico, impressora, AMS), i18n PT/EN |
 | F4 | Motor de recomendação por regras (filamento + parâmetros, prioridade qualidade) + explicação via Claude |
 | F5 | Saídas: preset de usuário (JSON/bundle) + 3MF de projeto via CLI + fatiamento para tempo/filamento reais |
 | F6 | Multicor/AMS Lite (até 4 slots) e validação com impressões reais |
@@ -118,6 +118,10 @@ menores que a largura de extrusão do bico · sugestão de orientação · neces
 
 - `backend/filamentor/catalog.py` — `PresetLibrary` (carrega e achata presets) e `Catalog` (escopo do Filamentor).
 - `backend/filamentor/analysis.py` — análise geométrica (`analyze()`), exposta em `POST /api/analyze` (upload).
+- `backend/filamentor/threemf.py` — leitor próprio de 3MF (formato de projeto Bambu: componentes em
+  `3D/Objects/*.model` + placas de `Metadata/model_settings.config`).
+- Uploads ficam **só em memória** (últimos 4, LRU) com `upload_id`: `GET /api/uploads/{id}/analysis?plate=N`
+  reanalisa outra placa e `GET /api/uploads/{id}/mesh?plate=N` devolve a malha analisada em STL binário.
 - `backend/filamentor/main.py` — API (`/api/health`, `/api/printers`, `/api/materials`, `/api/processes`,
   `/api/filaments`, `/api/presets/resolved`) e serve `frontend/` em `/`.
 - Testes em `backend/tests/`: `test_catalog.py` usa presets sintéticos; `test_bambu_studio_profiles.py`
@@ -131,6 +135,36 @@ menores que a largura de extrusão do bico · sugestão de orientação · neces
 - Filtros do catálogo: `instantiation == "true"`, `compatible_printers` contém a máquina, família suportada,
   `filament_is_support != 1`, `required_nozzle_HRC <= 20` (exclui CF/GF).
 - Catálogo atual: A1 e A1 mini × bicos 0.2/0.4/0.6/0.8; ex. A1 0.4 = 10 processos e 37 filamentos.
+
+## Frontend (F3)
+
+- Sem build: ES modules nativos + `importmap` apontando o Three.js 0.169.0 no jsDelivr.
+  `frontend/app.js` (fluxo e questionário), `frontend/viewer.js` (Three.js), `frontend/i18n.js` (PT-BR/EN).
+- O visualizador lê **STL no navegador**; **3MF vem do backend** (`/api/uploads/{id}/mesh`), porque o
+  `ThreeMFLoader` do Three.js quebra com projetos Bambu ("Cannot read properties of undefined (reading
+  'mesh')"). Em ambos os casos o overhang é recalculado localmente (mesmas regras do backend:
+  normal pela geometria, faces até 0,2 mm da mesa ignoradas) → slider de ângulo responde na hora.
+  O arquivo também vai para `POST /api/analyze` em paralelo.
+- Ao chegar a análise, a melhor orientação é aplicada automaticamente; "Como veio no arquivo" sempre aparece
+  na lista. Overhang/contato exibidos seguem a orientação selecionada.
+- `getAnswers()` em `app.js` é o **contrato com a F4**: impressora/bico, AMS, material/filamento,
+  finalidade, ambiente, calor, flexibilidade, resistência, alimento, acabamento, escala e matriz de orientação.
+- Alertas imediatos (antes da IA): contato com alimento, calor alto, flexível ≠ TPU, TPU no AMS Lite,
+  TPU com bico 0.2, PLA externo.
+- Estimativa de filamento provisória: casca de 0,84 mm + 15% de preenchimento × densidade do preset.
+  Valor real virá do fatiamento (F5).
+- Testado com o Master Mason (95 MB, 2 M faces): ~7 s do upload à análise completa; layout ok em 375 px.
+
+## 3MF e placas
+
+- Projeto Bambu = várias placas lado a lado no mesmo espaço de coordenadas (placa 2 fica ~300 mm à direita
+  etc.). **A unidade de análise é a placa**; padrão = primeira placa, e a interface mostra um seletor.
+  Antes da correção, o projeto inteiro virava uma "peça" de 710 × 359 mm e levava até 34 s.
+- Placa com várias peças: só a orientação original é avaliada (o Bambu Studio já arrumou a placa).
+- Transformações 3MF: 12 números = matriz 4×3 sobre vetores-linha; componente ∘ item; unidade do modelo raiz
+  vale para tudo. Proteções: limite de 2 GB descompactado, `resolve_entities=False`, `no_network=True`.
+- Testado com projetos reais em `~/Downloads` (Maria, Menino Jesus, Stackable Tower, KickDeck, AMS mount,
+  estátuas): Maria placa 1 = 92,6 × 87,5 × 150 mm, igual à descrição do projeto.
 
 ## Análise geométrica — decisões e limitações (F2)
 
