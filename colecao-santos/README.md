@@ -7,6 +7,15 @@ nas Bambu Lab **A1 / A1 mini**: detalhe visível, mínimo de suporte e pouco fil
 |---|-------|---------|--------------------|
 | 1 | São Miguel Arcanjo | `saida/sao_miguel_arcanjo_150mm.3mf` | 80,8 × 80,8 × 150 mm |
 
+> **Versão realista:** o gerador por código produz um estilo popular/estilizado. Para realismo,
+> o fluxo é imagem-conceito → IA imagem-para-3D (Hitem3D/Meshy) → `preparar_modelo.py`.
+> Prompts, configurações e opções de mármore + dourado em [`PROMPTS_IA.md`](PROMPTS_IA.md).
+>
+> ```bash
+> .venv/bin/pip install pymeshfix   # reparo de malhas geradas por IA
+> .venv/bin/python colecao-santos/preparar_modelo.py modelo.stl --altura 150 --pedestal
+> ```
+
 Padrão da coleção: **150 mm de altura** (cabe na A1 mini; cabe até 180 mm nela e 256 mm na A1).
 
 ## Gerar / regerar
